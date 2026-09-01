@@ -5,29 +5,24 @@ on:
     branches: [main]
   workflow_dispatch:
 
-permissions:
-  id-token: write
-  contents: read
-
 env:
   AWS_REGION: us-east-1
+  # >>> CHANGE THIS LINE to your own ECR repository name. <
   ECR_REPO: lab-test-a-b-pair20-ecr
-  ROLE_ARN: arn:aws:iam::232881763218:role/lab-test-a-b-pair20-gha-role
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     outputs:
       image: ${{ steps.push.outputs.image }}
       registry: ${{ steps.ecr.outputs.registry }}
-
     steps:
       - uses: actions/checkout@v4
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
       - uses: aws-actions/amazon-ecr-login@v2
@@ -38,32 +33,23 @@ jobs:
         run: |
           IMAGE=${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO }}
           TAG=${GITHUB_SHA::7}
-
-          docker build \
-            --build-arg APP_VERSION=$TAG \
-            -t $IMAGE:$TAG \
-            -t $IMAGE:latest \
-            .
-
+          docker build --build-arg APP_VERSION=$TAG -t $IMAGE:$TAG -t $IMAGE:latest .
           docker push $IMAGE:$TAG
           docker push $IMAGE:latest
-
           echo "image=$IMAGE" >> $GITHUB_OUTPUT
 
   deploy:
     needs: build
     if: github.event_name == 'workflow_dispatch'
-
     runs-on: ubuntu-latest
-
     env:
       IMAGE: ${{ needs.build.outputs.image }}
       REGISTRY: ${{ needs.build.outputs.registry }}
-
     steps:
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Tell the server to run the new image
@@ -71,9 +57,9 @@ jobs:
           aws ssm send-command \
             --instance-ids ${{ vars.INSTANCE_ID }} \
             --document-name "AWS-RunShellScript" \
-            --parameters "commands=[
-              \"aws ecr get-login-password --region $AWS_REGION | docker login -u AWS --password-stdin $REGISTRY\",
-              \"docker pull $IMAGE:latest\",
-              \"docker rm -f todo || true\",
-              \"docker run -d --name todo --restart always -p 80:3001 $IMAGE:latest\"
+            --parameters "commands=[ \
+              \"aws ecr get-login-password --region $AWS_REGION | docker login -u AWS --password-stdin $REGISTRY\", \
+              \"docker pull $IMAGE:latest\", \
+              \"docker rm -f todo || true\", \
+              \"docker run -d --name todo --restart always -p 80:3001 $IMAGE:latest\" \
             ]"
