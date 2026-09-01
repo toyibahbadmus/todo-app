@@ -8,7 +8,7 @@ on:
 env:
   AWS_REGION: us-east-1
   # >>> CHANGE THIS LINE to your own ECR repository name. <
-  ECR_REPO: lab-test-a-b-pair20-ecr
+  ECR_REPO: lab-test-a-b-pair13-ecr
 
 jobs:
   build:
